@@ -11,7 +11,7 @@ pacman::p_load(
   # enaR
 )
 
-gc()
+# gc()
 
 
 
@@ -58,10 +58,23 @@ m_super <- feols(
 
 m_comp <- feols(
   c(DEE, DTE, DUC, DMSP, DTI) ~ dep_m + HHI_clean + DCI*soft_comp + broker + new_cb_firms  |
-    year,
+    year, 
   data = full_data_c_scaled,
   # fsplit = ~ tech_group,
   # data = subset(full_data_c, tech_group == "user_facing"),
   cluster = ~country #family = "logit"
+)
+
+
+
+modelsummary::modelsummary(
+  m_super, stars = T,
+  output = here::here("output", "full_sample_regression.tex")
+)
+
+
+modelsummary::modelsummary(
+  m_comp, stars = T,
+  output = here::here("output", "interaction_regression.tex")
 )
 
