@@ -1,0 +1,21 @@
+This dataset includes the data generated in the manuscript "Estimating Digital Product Trade through Corporate Revenue Data" by Viktor Stojkoski, Philipp Koch, Eva Coll, and César A. Hidalgo
+
+We include two .csv files:
+
+1) all_country_trade_ot_intervals.csv - Country level bilateral trade estimates per digital product category using the subsidiary assignment.
+2) all_country_trade_hq_intervals.csv - Country level bilateral trade estimates per digital product category using the headquarters assignment.
+
+The documents have the following columns:
+firm - name of parent company/app developer (only for the firm level data)
+year - year of trade
+category - digital category
+iso_o - exporter country
+iso_d - importer country
+trade_value_pred - estimated trade value
+lb_value - lower bound for the 95% confidence interval of the estimated trade value
+ub_value - upper bound for the 95% confidence interval of the estimated trade value
+
+We also provide two lists that have details on the developers and firms included in our estimations: 
+apps_unique_category_entries.csv and firms_unique_category_entries. 
+The first list (apps_unique_category_entries.csv) includes the name of the app developer, their category and the country where they are registered. 
+The second list, includes the firms, their digital categories, countries where they are registered, and their parent company.

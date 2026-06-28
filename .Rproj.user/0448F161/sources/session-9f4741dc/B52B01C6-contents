@@ -1,0 +1,182 @@
+compute_relatedness_measures <- function(data) {
+  # Step 1: Create region-industry matrix (patent counts)
+  mat <- data %>%
+    select(region, industry, value) %>%
+    pivot_wider(names_from = industry, values_from = value, values_fill = 0) %>%
+    column_to_rownames("region") %>%
+    as.matrix()
+  
+  # Step 2: Compute RCA
+  rca_mat <- EconGeo::rca(mat, binary = FALSE)
+  rca_bin <- EconGeo::rca(mat, binary = TRUE)
+  
+  # rca_bin_list <- EconGeo::get
+  
+  # Step 3: Compute co-occurrence (transpose so industries are rows, regions are columns)
+  co_oc <- EconGeo::co_occurrence(t(rca_bin), diagonal = FALSE)
+  
+  # Step 4: Compute relatedness
+  rel <- EconGeo::relatedness(co_oc, method = "prob")
+  
+  # Step 5: Compute relatedness density
+  rel_density <- EconGeo::relatedness_density(rca_bin, rel)
+  
+  # Step 6: Compute complexity measures with the method of reflection
+  # regional complexity
+  rcomp <- EconGeo::morc(mat = rca_bin) 
+  # technological complexity
+  tcomp <- EconGeo::mort(mat = rca_bin)
+  
+  # Return as list
+  list(
+    rca = rca_mat,
+    rca_bin = rca_bin,
+    co_occurrence = co_oc,
+    relatedness = rel,
+    relatedness_density = rel_density,
+    rcomp = rcomp,
+    tcomp = tcomp
+  )
+}
+
+
+# compute_entry_events <-  function(ind_prep) {
+#   
+#   binary_matrices <- ind_prep |>
+#     unnest_wider("indicators") |>
+#     # notice here that the years start from 2006
+#     # we limit to this time horizon because the pkg only accepts 20 periods. 
+#     filter(app_year > 2005) |>
+#     # ungroup() |>
+#     arrange(app_year) |>
+#     pull(rca_bin)          # already binary matrices, just extract in order
+#   
+#   # entry_list expects mat1, mat2, mat3 ... as named arguments
+#   names(binary_matrices) <- paste0("mat", seq_along(binary_matrices))
+#   
+#   # entry_list internally calls get("mat1"), get("mat2") etc.
+#   # which searches up to globalenv — so that's where they must live.
+#   # on.exit guarantees cleanup even if entry_list errors mid-way.
+#   on.exit(
+#     rm(list = names(binary_matrices), envir = globalenv()), 
+#     add = TRUE
+#   )
+#   
+#   # assign into local environment so get("mat1") etc. can find them
+#   list2env(binary_matrices, envir = environment())
+#   
+#   entry <- do.call(EconGeo::entry_list, binary_matrices)
+#   
+#   # map integer period back to actual year
+#   # years <- sort(ind_prep$app_year)
+#   # period indexing starts from 2 i.e from 2007 (2006 is the first period)
+#   entry |>
+#     mutate(year = period + 2005)
+# }
+
+
+compute_entry_events <- function(ind_prep) {
+  
+  matrices <- ind_prep |>
+    unnest_wider("indicators") |>
+    filter(app_year > 2005) |>
+    arrange(app_year) |>
+    select(app_year, rca_bin)
+  
+  years <- matrices$app_year
+  mats  <- matrices$rca_bin
+  
+  map2_dfr(
+    mats[-length(mats)],
+    mats[-1],
+    \(prev, curr) {
+      
+      # build entry matrix using direct matrix indexing
+      entry_mat <- matrix(NA_integer_, nrow = nrow(curr), ncol = ncol(curr),
+                          dimnames = dimnames(curr))
+      
+      entry_mat[prev == 0L & curr == 1L] <- 1L  # entered
+      entry_mat[prev == 0L & curr == 0L] <- 0L  # did not enter
+      # prev == 1L cells stay NA (already specialised)
+      
+      entry_mat |>
+        as.data.frame() |>
+        rownames_to_column("region") |>
+        pivot_longer(-region, names_to = "industry", values_to = "entry")
+    },
+    .id = "period"
+  ) |>
+    mutate(
+      period = as.integer(period),
+      year   = years[period + 1]
+    )
+}
+
+compute_exit_events <- function(ind_prep) {
+  
+  matrices <- ind_prep |>
+    unnest_wider("indicators") |>
+    filter(app_year > 2005) |>
+    arrange(app_year) |>
+    select(app_year, rca_bin)
+  
+  years <- matrices$app_year
+  mats  <- matrices$rca_bin
+  
+  map2_dfr(
+    mats[-length(mats)],
+    mats[-1],
+    \(prev, curr) {
+      
+      # build exit matrix using direct matrix indexing
+      exit_mat <- matrix(NA_integer_, nrow = nrow(curr), ncol = ncol(curr),
+                         dimnames = dimnames(curr))
+      
+      exit_mat[prev == 1L & curr == 0L] <- 1L  # exited
+      exit_mat[prev == 1L & curr == 1L] <- 0L  # stayed specialised
+      # prev == 0L cells stay NA (not at risk of exiting)
+      
+      exit_mat |>
+        as.data.frame() |>
+        rownames_to_column("region") |>
+        pivot_longer(-region, names_to = "industry", values_to = "exit")
+    },
+    .id = "period"
+  ) |>
+    mutate(
+      period = as.integer(period),
+      year   = years[period + 1]
+    )
+}
+build_flat_table <- function(ind_prep) {
+  ind_prep %>%
+    mutate(
+      long = pmap(
+        list(rca, rca_bin, relatedness_density, rcomp, tcomp),
+        \(rca, bin, rel, rcomp, tcomp) {
+          
+          pivot_mat <- \(mat, nm) {
+            mat %>%
+              as.data.frame() %>%
+              rownames_to_column("region") %>%
+              pivot_longer(-region, names_to = "tech", values_to = nm)
+          }
+          
+          # pivot each matrix explicitly with its column name
+          pivot_mat(rca, "rca") %>%
+            left_join(pivot_mat(bin, "rca_bin"),             by = c("region", "tech")) %>%
+            left_join(pivot_mat(rel, "relatedness_density"), by = c("region", "tech")) %>%
+            left_join(
+              enframe(rcomp, name = "region", value = "region_complexity"),
+              by = "region"
+            ) %>%
+            left_join(
+              enframe(tcomp, name = "tech", value = "tech_complexity"),
+              by = "tech"
+            )
+        }
+      )
+    ) %>%
+    select(app_year, long) %>%
+    unnest(long)
+}

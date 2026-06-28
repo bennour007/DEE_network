@@ -1,0 +1,67 @@
+pacman::p_load(
+  tidyverse, 
+  tidygraph,
+  igraph, 
+  fixest, 
+  marginaleffects,
+  gt,
+  countrycode,
+  PerformanceAnalytics,
+  WDI
+  # enaR
+)
+
+gc()
+
+
+
+full_data_c <- read_csv(here::here("data", "full_data_c.csv"))
+
+soft_comp <- read_csv(here::here("data", "soft_comp20-21.csv"))
+
+full_data_c %>%
+  left_join(soft_comp, by = c("country", "year")) %>%  
+  rename(gdp = GDP.x) %>% 
+  mutate(
+    across(
+      c(
+        dep_m, HHI, HHI_clean, entropy, entropy_clean,
+        DCI, asym, cyc2, cyc_katz, DEE, new_cb_firms,
+        DTI, DTE, DMSP, DUC, soft_comp
+      ),
+      ~ scale(.x)[,1]
+    )
+  ) -> full_data_c_scaled
+
+
+
+full_data_c_scaled %>% 
+  select(dep_m, HHI, HHI_clean, entropy, entropy_clean,
+         DCI, asym, cyc2, cyc_katz, broker, eigen) %>% 
+  cor(use = "complete.obs")
+
+## we want ot understand
+
+
+
+## total effect on DEE 
+
+m_super <- feols(
+  c(DEE, DTE, DUC, DMSP, DTI) ~ dep_m + HHI_clean + DCI + broker + new_cb_firms  | 
+    year,
+  data = full_data_c_scaled,
+  # fsplit = ~ tech_group,
+  # data = subset(full_data_c, tech_group == "user_facing"),
+  cluster = ~country #family = "logit"
+)
+
+
+m_comp <- feols(
+  c(DEE, DTE, DUC, DMSP, DTI) ~ dep_m + HHI_clean + DCI*soft_comp + broker + new_cb_firms  |
+    year,
+  data = full_data_c_scaled,
+  # fsplit = ~ tech_group,
+  # data = subset(full_data_c, tech_group == "user_facing"),
+  cluster = ~country #family = "logit"
+)
+
