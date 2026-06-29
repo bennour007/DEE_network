@@ -1,0 +1,47 @@
+
+
+pacman::p_load(
+  tidyverse,
+  sf, 
+  rnaturalearth
+)
+
+# world centroids (lon/lat per iso3c)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+cent  <- world %>%
+  st_centroid(of_largest_polygon = TRUE) %>%
+  mutate(lon = st_coordinates(.)[,1], lat = st_coordinates(.)[,2]) %>%
+  st_drop_geometry() %>%
+  select(iso = iso_a3, lon, lat)
+
+trade_hq <- trade_hq %>% 
+  # group_by(year, tech_group) %>% 
+  # select(1,2, category, value = trade_value_pred) %>% 
+  group_by(year, tech_group, iso_o, iso_d) %>% 
+  summarise(value = sum(trade_value_pred)) %>% 
+  ungroup()
+
+# top-3 suppliers per importer, one year, one tech_group (keeps it readable)
+edges <- trade_hq %>%
+  filter(year == 2021, tech_group == "infrastructure") %>%
+  group_by(iso_d, iso_o) %>%
+  summarise(value = sum(trade_value_pred), .groups = "drop") %>%
+  group_by(iso_d) %>%
+  slice_max(value, n = 3) %>%
+  ungroup() %>%
+  # attach origin + destination coordinates
+  left_join(cent, by = c("iso_o" = "iso")) %>%
+  rename(x = lon, y = lat) %>%
+  left_join(cent, by = c("iso_d" = "iso")) %>%
+  rename(xend = lon, yend = lat) %>%
+  filter(!is.na(x), !is.na(xend))
+
+ggplot() +
+  geom_sf(data = world, fill = "grey95", color = "white", linewidth = 0.2) +
+  geom_curve(data = edges,
+             aes(x = x, y = y, xend = xend, yend = yend, linewidth = value),
+             curvature = 0.2, alpha = 0.4, color = "steelblue") +
+  scale_linewidth(range = c(0.1, 1.5), guide = "none") +
+  coord_sf(crs = "+proj=robin") +
+  theme_void() +
+  labs(title = "Top digital-infrastructure suppliers, 2021")

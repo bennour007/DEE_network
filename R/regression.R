@@ -78,3 +78,24 @@ modelsummary::modelsummary(
   output = here::here("output", "interaction_regression.tex")
 )
 
+modelsummary::modelplot(
+  m_super,stars = T,
+  coef_omit = "Intercept"
+) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  # coord_flip()
+
+  facet_wrap(~model, scales = "free")   # or color by model
+
+
+modelsummary::modelplot(
+  m_comp,
+  coef_omit = "Intercept"
+) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  facet_wrap(~term, scales = "free")   # or color by model
+
+
+fixest::coefplot(objects = m_comp)
+
+plot_slopes(m_comp$`lhs: DTE`, variables = "DCI", by = "soft_comp")
